@@ -131,17 +131,23 @@ func (c *AlertConsumer) startWebSocketServer(cfg *config.AlertConsumerConfig) {
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			log.Printf("Error encoding health response: %v", err)
+		}
 	})
 
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "alive"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "alive"}); err != nil {
+			log.Printf("Error encoding liveness response: %v", err)
+		}
 	})
 
 	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ready"}); err != nil {
+			log.Printf("Error encoding readiness response: %v", err)
+		}
 	})
 
 	mux.HandleFunc("GET /metrics", promhttp.Handler().ServeHTTP)
@@ -273,7 +279,9 @@ func (c *AlertConsumer) consume() error {
 
 			if err := c.processMessage(msg); err != nil {
 				log.Printf("Error processing message: %v", err)
-				msg.Nack(false, true)
+				if err := msg.Nack(false, true); err != nil {
+					log.Printf("Error nacking message: %v", err)
+				}
 				handler.AlertsConsumedTotal.WithLabelValues("failed").Inc()
 				continue
 			}
