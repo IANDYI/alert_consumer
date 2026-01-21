@@ -56,4 +56,4 @@ jobs:
       - name: Verify Deployment
         run: |
           echo "Checking rollout status..."
-          oc rollout status dc/alert-consumer -n cloud-09-development --timeout=2m
+          oc rollout status deploy/alert-consumer -n cloud-09-development --timeout=2m
