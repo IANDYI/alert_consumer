@@ -34,7 +34,7 @@ func createTestToken(t *testing.T, privateKey *rsa.PrivateKey, claims jwt.MapCla
 
 func TestNewWebSocketHandler(t *testing.T) {
 	hub := websocket.NewHub()
-	privateKey, publicKey := generateTestKeyPair(t)
+	_, publicKey := generateTestKeyPair(t)
 	authMW := middleware.NewAuthMiddleware(publicKey)
 	defer authMW.Stop()
 
@@ -46,7 +46,7 @@ func TestNewWebSocketHandler(t *testing.T) {
 
 func TestWebSocketHandler_HandleWebSocket_MissingToken(t *testing.T) {
 	hub := websocket.NewHub()
-	privateKey, publicKey := generateTestKeyPair(t)
+	_, publicKey := generateTestKeyPair(t)
 	authMW := middleware.NewAuthMiddleware(publicKey)
 	defer authMW.Stop()
 
@@ -63,7 +63,7 @@ func TestWebSocketHandler_HandleWebSocket_MissingToken(t *testing.T) {
 
 func TestWebSocketHandler_HandleWebSocket_InvalidToken(t *testing.T) {
 	hub := websocket.NewHub()
-	privateKey, publicKey := generateTestKeyPair(t)
+	_, publicKey := generateTestKeyPair(t)
 	authMW := middleware.NewAuthMiddleware(publicKey)
 	defer authMW.Stop()
 
@@ -103,7 +103,6 @@ func TestWebSocketHandler_HandleWebSocket_ValidToken(t *testing.T) {
 	}
 	tokenString := createTestToken(t, privateKey, claims)
 
-	upgrader := gorillaWS.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wsHandler.HandleWebSocket(w, r)
 	}))
