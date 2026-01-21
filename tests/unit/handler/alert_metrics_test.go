@@ -9,15 +9,16 @@ import (
 )
 
 func TestRegisterAlertConsumerMetrics(t *testing.T) {
-	// Clear any previously registered metrics
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	// Create a custom registry for testing
+	registry := prometheus.NewRegistry()
 
-	handler.RegisterAlertConsumerMetrics()
+	// Register metrics to the custom registry
+	registry.MustRegister(handler.AlertsConsumedTotal)
+	registry.MustRegister(handler.AlertsBroadcastTotal)
+	registry.MustRegister(handler.WebSocketConnections)
+	registry.MustRegister(handler.RabbitMQConsumeDuration)
 
-	// Verify metrics are registered
-	registry := prometheus.DefaultRegisterer.(*prometheus.Registry)
-
-	// Check AlertsConsumedTotal
+	// Gather metrics from the registry
 	metrics, err := registry.Gather()
 	assert.NoError(t, err)
 
@@ -46,8 +47,8 @@ func TestRegisterAlertConsumerMetrics(t *testing.T) {
 }
 
 func TestMetrics_AlertsConsumedTotal(t *testing.T) {
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	handler.RegisterAlertConsumerMetrics()
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(handler.AlertsConsumedTotal)
 
 	handler.AlertsConsumedTotal.WithLabelValues("success").Inc()
 	handler.AlertsConsumedTotal.WithLabelValues("failed").Inc()
@@ -58,8 +59,8 @@ func TestMetrics_AlertsConsumedTotal(t *testing.T) {
 }
 
 func TestMetrics_AlertsBroadcastTotal(t *testing.T) {
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	handler.RegisterAlertConsumerMetrics()
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(handler.AlertsBroadcastTotal)
 
 	handler.AlertsBroadcastTotal.WithLabelValues("connected").Inc()
 	handler.AlertsBroadcastTotal.WithLabelValues("none").Inc()
@@ -68,8 +69,8 @@ func TestMetrics_AlertsBroadcastTotal(t *testing.T) {
 }
 
 func TestMetrics_WebSocketConnections(t *testing.T) {
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	handler.RegisterAlertConsumerMetrics()
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(handler.WebSocketConnections)
 
 	handler.WebSocketConnections.WithLabelValues("admin").Set(5)
 	handler.WebSocketConnections.WithLabelValues("user").Set(10)
@@ -78,8 +79,8 @@ func TestMetrics_WebSocketConnections(t *testing.T) {
 }
 
 func TestMetrics_RabbitMQConsumeDuration(t *testing.T) {
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	handler.RegisterAlertConsumerMetrics()
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(handler.RabbitMQConsumeDuration)
 
 	handler.RabbitMQConsumeDuration.WithLabelValues("success").Observe(0.1)
 	handler.RabbitMQConsumeDuration.WithLabelValues("failed").Observe(0.2)
