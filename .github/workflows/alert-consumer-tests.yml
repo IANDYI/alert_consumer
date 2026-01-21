@@ -8,26 +8,39 @@ on:
 
 jobs:
   test-and-lint:
+    name: Test and Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version: '1.24.3'
           cache-dependency-path: go.sum
       
       - name: Lint
-        uses: golangci/golangci-lint-action@v6 # Updated version
+        uses: golangci/golangci-lint-action@v6
       
       - name: Run Tests
         run: go test -v -race -coverprofile=coverage.out ./tests/unit/...
 
   deploy:
-    name: Trigger OpenShift
+    name: Trigger OpenShift Build
     needs: [test-and-lint]
+    # Ensures deployment only happens on merged PRs or direct pushes to main/master
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # FIX: This step installs the 'oc' binary so the next steps can find it
+      - name: Install OpenShift CLI
+        uses: redhat-actions/openshift-tools-installer@v1
+        with:
+          oc: "4.14" # You can also use "latest"
+
       - name: Log in to OpenShift
         uses: redhat-actions/oc-login@v1
         with:
@@ -35,7 +48,12 @@ jobs:
           openshift_token: ${{ secrets.OPENSHIFT_TOKEN }}
           insecure_skip_tls_verify: true
 
-      - name: Start Build
+      - name: Start OpenShift Build
         run: |
-          # This approach is safer than webhooks and provides real-time logs
+          echo "Starting build for alert-consumer in namespace cloud-09-development..."
           oc start-build alert-consumer -n cloud-09-development --follow --wait
+          
+      - name: Verify Deployment
+        run: |
+          echo "Checking rollout status..."
+          oc rollout status dc/alert-consumer -n cloud-09-development --timeout=2m
