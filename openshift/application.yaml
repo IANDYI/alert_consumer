@@ -1,0 +1,219 @@
+# ImageStream - Defines the image repository for alert-consumer
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: alert-consumer
+  labels:
+    app: alert-consumer
+spec:
+  lookupPolicy:
+    local: true
+---
+# BuildConfig - Builds the application image from source (Dockerfile)
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: alert-consumer
+  labels:
+    app: alert-consumer
+spec:
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: '1'
+    requests:
+      memory: 256Mi
+      cpu: 200m
+  source:
+    type: Git
+    git:
+      uri: https://github.com/IANDYI/alert_consumer.git
+      ref: main
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+      buildArgs:
+        - name: DOCKER_BUILDKIT
+          value: "1"
+  output:
+    to:
+      kind: ImageStreamTag
+      name: alert-consumer:latest
+  triggers:
+    - type: ConfigChange
+---
+# Deployment for Alert Consumer
+# This deployment runs the alert consumer service that:
+# - Consumes alerts from RabbitMQ (baby_alerts queue)
+# - Broadcasts alerts to connected admin/nurses via WebSocket
+# - Exposes WebSocket endpoint on port 8081
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-consumer
+  labels:
+    app: alert-consumer
+    component: consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-consumer
+      component: consumer
+  template:
+    metadata:
+      labels:
+        app: alert-consumer
+        component: consumer
+    spec:
+      containers:
+        - name: alert-consumer
+          image: alert-consumer:latest
+          command: ["./alert-consumer"]
+          ports:
+            - containerPort: 8081
+              name: websocket
+              protocol: TCP
+            - containerPort: 8081
+              name: http
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: alert-consumer-config
+          env:
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: password
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: url
+            - name: ALERTS_QUEUE_NAME
+              value: "baby_alerts"
+            - name: WEBSOCKET_PORT
+              value: "8081"
+            - name: PUBLIC_KEY_PATH
+              value: "/etc/certs/public.pem"
+            - name: WEBSOCKET_ALLOWED_ORIGINS
+              value: ""
+          volumeMounts:
+            - name: public-key
+              mountPath: /etc/certs
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: public-key
+          secret:
+            secretName: identity-rsa-keys
+            items:
+              - key: public.pem
+                path: public.pem
+---
+# Service for Alert Consumer
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-consumer
+  labels:
+    app: alert-consumer
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8081"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: alert-consumer
+    component: consumer
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8081
+      name: http
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+      name: websocket
+    - protocol: TCP
+      port: 9090
+      targetPort: 8081
+      name: metrics
+  type: ClusterIP
+---
+# Route - Exposes the Alert Consumer WebSocket endpoint externally
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: alert-consumer
+  labels:
+    app: alert-consumer
+spec:
+  to:
+    kind: Service
+    name: alert-consumer
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+# HorizontalPodAutoscaler for Alert Consumer
+# Note: For alert consumers, typically you want fewer replicas to avoid
+# duplicate message processing. Consider scaling based on RabbitMQ queue depth.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: alert-consumer-hpa
+  labels:
+    app: alert-consumer
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: alert-consumer
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
