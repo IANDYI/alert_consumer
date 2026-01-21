@@ -57,6 +57,19 @@ type Client struct {
 	userName  string
 }
 
+// NewClient creates a new WebSocket client
+func NewClient(hub *Hub, conn *gorillaWS.Conn, userID, userRole, userEmail, userName string) *Client {
+	return &Client{
+		hub:       hub,
+		conn:      conn,
+		send:      make(chan []byte, 256),
+		userID:    userID,
+		userRole:  userRole,
+		userEmail: userEmail,
+		userName:  userName,
+	}
+}
+
 // Hub maintains the set of active clients and broadcasts messages
 type Hub struct {
 	clients      map[*Client]bool
@@ -65,6 +78,13 @@ type Hub struct {
 	unregister   chan *Client
 	mu           sync.RWMutex
 	adminClients map[string]*Client
+}
+
+// RegisterClient registers a new client with the hub and starts the client pumps
+func (h *Hub) RegisterClient(client *Client) {
+	h.register <- client
+	go client.ReadPump()
+	go client.WritePump()
 }
 
 // NewHub creates a new WebSocket hub
@@ -158,8 +178,8 @@ func (h *Hub) GetConnectedAdminCount() int {
 	return len(h.adminClients)
 }
 
-// readPump pumps messages from the websocket connection to the hub
-func (c *Client) readPump() {
+// ReadPump pumps messages from the websocket connection to the hub
+func (c *Client) ReadPump() {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -183,8 +203,8 @@ func (c *Client) readPump() {
 		}
 }
 
-// writePump pumps messages from the hub to the websocket connection
-func (c *Client) writePump() {
+// WritePump pumps messages from the hub to the websocket connection
+func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()

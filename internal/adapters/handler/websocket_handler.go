@@ -78,22 +78,11 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		email = "unknown"
 	}
 
-	client := &websocket.Client{
-		hub:       h.hub,
-		conn:      conn,
-		send:      make(chan []byte, 256),
-		userID:    userID,
-		userRole:  role,
-		userEmail: email,
-		userName:  userName,
-	}
-
-	h.hub.register <- client
+	client := websocket.NewClient(h.hub, conn, userID, role, email, userName)
 
 	WebSocketConnections.WithLabelValues(strings.ToLower(role)).Inc()
 
-	go client.writePump()
-	go client.readPump()
+	h.hub.RegisterClient(client)
 }
 
 func (h *WebSocketHandler) validateToken(tokenString string) (userID, role, email, firstName, lastName string, ok bool) {
